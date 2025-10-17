@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"runtime"
+	"time"
 
 	"github.com/Salamander5876/AnimoEngine/pkg/core"
 	"github.com/Salamander5876/AnimoEngine/pkg/graphics/shader"
@@ -62,6 +63,18 @@ func (app *DemoApp) onInit(engine *core.Engine) error {
 
 	fmt.Printf("OpenGL Version: %s\n", gl.GoStr(gl.GetString(gl.VERSION)))
 	fmt.Printf("GLSL Version: %s\n", gl.GoStr(gl.GetString(gl.SHADING_LANGUAGE_VERSION)))
+
+	// Показываем логотип на 3 секунды
+	fmt.Println("\nПоказываем логотип AnimoEngine...")
+	splash, err := core.NewSplashScreen("logo.png", 3*time.Second)
+	if err != nil {
+		fmt.Printf("Не удалось загрузить логотип: %v\n", err)
+		// Продолжаем без логотипа
+	} else {
+		splash.Show(engine)
+		splash.Cleanup()
+		fmt.Println("Логотип показан!")
+	}
 
 	// Создаем шейдер для простого треугольника
 	simpleVertexShader := `

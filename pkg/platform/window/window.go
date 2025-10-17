@@ -14,6 +14,13 @@ var (
 	ErrWindowCreation       = errors.New("failed to create window")
 )
 
+// Режимы курсора
+const (
+	CursorNormal   = int(glfw.CursorNormal)   // Обычный видимый курсор
+	CursorHidden   = int(glfw.CursorHidden)   // Скрытый курсор
+	CursorDisabled = int(glfw.CursorDisabled) // Захваченный курсор (для FPS)
+)
+
 // WindowConfig конфигурация окна
 type WindowConfig struct {
 	Title      string

@@ -22,6 +22,7 @@ const (
 	KeyD            = int(glfw.KeyD)
 	KeyS            = int(glfw.KeyS)
 	KeyW            = int(glfw.KeyW)
+	KeyR            = int(glfw.KeyR)
 	KeyLeftShift    = int(glfw.KeyLeftShift)
 	KeyLeftControl  = int(glfw.KeyLeftControl)
 	KeyLeftAlt      = int(glfw.KeyLeftAlt)

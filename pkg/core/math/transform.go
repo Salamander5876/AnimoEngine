@@ -88,7 +88,8 @@ func (t *Transform) LookAt(target mgl32.Vec3, up mgl32.Vec3) {
 		0, 0, 0, 1,
 	}
 
-	t.Rotation = mat.Mat3().Quat().Normalize()
+	// Конвертируем матрицу в кватернион
+	t.Rotation = mgl32.Mat4ToQuat(mat).Normalize()
 }
 
 // Forward возвращает вектор направления "вперед" в локальных координатах
