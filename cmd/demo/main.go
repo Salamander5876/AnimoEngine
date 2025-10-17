@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"runtime"
 
 	"github.com/Salamander5876/AnimoEngine/pkg/core"
 	"github.com/Salamander5876/AnimoEngine/pkg/graphics/shader"
@@ -10,6 +11,12 @@ import (
 	"github.com/go-gl/gl/v3.3-core/gl"
 	"github.com/go-gl/mathgl/mgl32"
 )
+
+// init вызывается перед main и блокирует главный поток для OpenGL
+func init() {
+	// КРИТИЧЕСКИ ВАЖНО: OpenGL требует чтобы все вызовы были из одного потока ОС
+	runtime.LockOSThread()
+}
 
 // DemoApp демонстрационное приложение
 type DemoApp struct {

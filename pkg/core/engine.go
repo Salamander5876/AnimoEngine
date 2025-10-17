@@ -82,6 +82,9 @@ func (e *Engine) Initialize() error {
 		return fmt.Errorf("failed to create window: %w", err)
 	}
 
+	// Делаем OpenGL контекст текущим для этого потока
+	e.window.MakeContextCurrent()
+
 	// Настраиваем колбэки ввода
 	e.setupInputCallbacks()
 
