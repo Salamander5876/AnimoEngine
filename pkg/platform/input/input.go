@@ -30,6 +30,7 @@ const (
 	Key2            = int(glfw.Key2)
 	Key3            = int(glfw.Key3)
 	Key4            = int(glfw.Key4)
+	Key5            = int(glfw.Key5)
 	KeyLeftShift    = int(glfw.KeyLeftShift)
 	KeyLeftControl  = int(glfw.KeyLeftControl)
 	KeyLeftAlt      = int(glfw.KeyLeftAlt)

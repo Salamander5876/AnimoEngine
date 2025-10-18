@@ -9,6 +9,7 @@ import (
 
 	"github.com/Salamander5876/AnimoEngine/pkg/core"
 	"github.com/Salamander5876/AnimoEngine/pkg/graphics/camera"
+	"github.com/Salamander5876/AnimoEngine/pkg/graphics/model"
 	"github.com/Salamander5876/AnimoEngine/pkg/graphics/shader"
 	"github.com/Salamander5876/AnimoEngine/pkg/physics"
 	"github.com/Salamander5876/AnimoEngine/pkg/platform/input"
@@ -61,6 +62,9 @@ type PhysicsTest struct {
 
 	// Тени
 	shadowShader *shader.Shader // Шейдер для рендеринга теней
+
+	// 3D модели
+	pistolModel *model.Model // Модель пистолета Malorian
 }
 
 func main() {
@@ -231,6 +235,19 @@ func (p *PhysicsTest) onInit(engine *core.Engine) error {
 	p.createPlane()
 	p.createLiquid()
 
+	// Загружаем 3D модель пистолета
+	pistolModel, err := model.LoadFBXSimple(
+		"../../other/Malorian/Malorian.fbx",
+		"../../other/Malorian/Textures/Malorian_Base.png",
+	)
+	if err != nil {
+		fmt.Printf("⚠️  Не удалось загрузить модель пистолета: %v\n", err)
+		fmt.Println("💡 Будет использоваться куб вместо модели")
+	} else {
+		p.pistolModel = pistolModel
+		fmt.Println("✅ Модель пистолета Malorian загружена")
+	}
+
 	// Создаем физический мир
 	p.physicsWorld = physics.NewPhysicsWorld()
 	p.physicsWorld.GroundPlaneY = 0.0
@@ -253,6 +270,7 @@ func (p *PhysicsTest) onInit(engine *core.Engine) error {
 	fmt.Println("2 - Выбрать СФЕРУ (зелёную)")
 	fmt.Println("3 - Выбрать КАПСУЛУ (синюю)")
 	fmt.Println("4 - Выбрать ЖИДКОСТЬ (голубую)")
+	fmt.Println("5 - Выбрать ПИСТОЛЕТ Malorian (с текстурой)")
 	fmt.Println("ПРОБЕЛ - Создать выбранный объект")
 	fmt.Println("R - Удалить все объекты")
 	fmt.Println("T - Включить/Выключить ФОНАРИК")
@@ -315,6 +333,10 @@ func (p *PhysicsTest) onUpdate(engine *core.Engine, dt float32) {
 	if inputMgr.IsKeyPressed(input.Key4) && p.selectedShape != physics.LiquidShape {
 		p.selectedShape = physics.LiquidShape
 		fmt.Println("✅ Выбрана: ЖИДКОСТЬ (голубая, мягкая)")
+	}
+	if inputMgr.IsKeyPressed(input.Key5) && p.selectedShape != physics.ModelShape {
+		p.selectedShape = physics.ModelShape
+		fmt.Println("✅ Выбран: ПИСТОЛЕТ Malorian (3D модель с текстурой)")
 	}
 
 	// Управление освещением - клавиша T (фонарик)
@@ -421,6 +443,11 @@ func (p *PhysicsTest) spawnObject() {
 
 		fmt.Printf("💧 Создано частиц: %d (всего: %d)\n", particleCount, len(p.fluidSystem.Particles))
 		return // Выходим раньше, не добавляем в physicsWorld
+	case physics.ModelShape:
+		// Для 3D модели (пистолет)
+		body.Dimensions = mgl32.Vec3{0.5, 0.5, 1.5} // Размер для коллизии
+		body.Name = "Malorian Pistol"
+		nameRu = "ПИСТОЛЕТ Malorian"
 	}
 
 	p.physicsWorld.AddBody(body)
@@ -509,6 +536,25 @@ func (p *PhysicsTest) onRender(engine *core.Engine) {
 		case physics.LiquidShape:
 			gl.BindVertexArray(p.liquidVAO)
 			gl.DrawArrays(gl.TRIANGLES, 0, 36)
+		case physics.ModelShape:
+			// Рисуем 3D модель пистолета
+			if p.pistolModel != nil {
+				for _, mesh := range p.pistolModel.Meshes {
+					// Активируем текстуру если есть
+					if mesh.Texture != 0 {
+						gl.ActiveTexture(gl.TEXTURE0)
+						gl.BindTexture(gl.TEXTURE_2D, mesh.Texture)
+					}
+
+					gl.BindVertexArray(mesh.VAO)
+					gl.DrawElements(gl.TRIANGLES, int32(len(mesh.Indices)), gl.UNSIGNED_INT, nil)
+					gl.BindVertexArray(0)
+
+					if mesh.Texture != 0 {
+						gl.BindTexture(gl.TEXTURE_2D, 0)
+					}
+				}
+			}
 		}
 	}
 
@@ -599,6 +645,14 @@ func (p *PhysicsTest) onRender(engine *core.Engine) {
 		case physics.LiquidShape:
 			gl.BindVertexArray(p.liquidVAO)
 			gl.DrawArrays(gl.TRIANGLES, 0, 36)
+		case physics.ModelShape:
+			// Рисуем тень от 3D модели
+			if p.pistolModel != nil {
+				for _, mesh := range p.pistolModel.Meshes {
+					gl.BindVertexArray(mesh.VAO)
+					gl.DrawElements(gl.TRIANGLES, int32(len(mesh.Indices)), gl.UNSIGNED_INT, nil)
+				}
+			}
 		}
 			}
 		}

@@ -22,6 +22,7 @@ const (
 	CapsuleShape
 	PlaneShape
 	LiquidShape // Жидкость (мягкое тело)
+	ModelShape  // 3D модель (FBX/OBJ)
 )
 
 // RigidBody физическое тело
