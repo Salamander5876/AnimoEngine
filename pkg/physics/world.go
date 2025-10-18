@@ -91,6 +91,9 @@ func (w *PhysicsWorld) checkGroundCollision(body *RigidBody) {
 		bottomY = body.Position.Y() - body.Dimensions.X()*body.Scale.X()
 	case CapsuleShape:
 		bottomY = body.Position.Y() - (body.Dimensions.Y()*body.Scale.Y()/2 + body.Dimensions.X()*body.Scale.X())
+	case LiquidShape:
+		// Жидкость - как сфера
+		bottomY = body.Position.Y() - body.Dimensions.X()*body.Scale.X()
 	}
 
 	if bottomY <= w.GroundPlaneY {
@@ -105,6 +108,8 @@ func (w *PhysicsWorld) checkGroundCollision(body *RigidBody) {
 			body.Position[1] = w.GroundPlaneY + body.Dimensions.X()*body.Scale.X()
 		case CapsuleShape:
 			body.Position[1] = w.GroundPlaneY + body.Dimensions.Y()*body.Scale.Y()/2 + body.Dimensions.X()*body.Scale.X()
+		case LiquidShape:
+			body.Position[1] = w.GroundPlaneY + body.Dimensions.X()*body.Scale.X()
 		}
 
 		// Применяем отскок
@@ -181,6 +186,10 @@ func (w *PhysicsWorld) getAABB(body *RigidBody) (mgl32.Vec3, mgl32.Vec3) {
 		r := body.Dimensions.X() * body.Scale.X()
 		h := body.Dimensions.Y() * body.Scale.Y() / 2
 		halfExtents = mgl32.Vec3{r, h + r, r}
+	case LiquidShape:
+		// Жидкость как сфера, но немного меньше
+		r := body.Dimensions.X() * body.Scale.X() * 0.8
+		halfExtents = mgl32.Vec3{r, r, r}
 	}
 
 	min := body.Position.Sub(halfExtents)

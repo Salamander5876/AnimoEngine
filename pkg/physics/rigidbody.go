@@ -21,6 +21,7 @@ const (
 	SphereShape
 	CapsuleShape
 	PlaneShape
+	LiquidShape // Жидкость (мягкое тело)
 )
 
 // RigidBody физическое тело
