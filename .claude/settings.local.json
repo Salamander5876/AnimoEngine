@@ -3,7 +3,11 @@
     "allow": [
       "Bash(go mod init:*)",
       "Bash(go mod download:*)",
-      "Bash(go run:*)"
+      "Bash(go run:*)",
+      "Bash(dir:*)",
+      "Bash(mkdir -p pkg/ui/html)",
+      "Bash(mkdir -p pkg/physics)",
+      "Bash(mkdir -p examples/physics_test)"
     ],
     "deny": [],
     "ask": []

@@ -11,6 +11,7 @@ import (
 	customMath "github.com/Salamander5876/AnimoEngine/pkg/core/math"
 	"github.com/Salamander5876/AnimoEngine/pkg/graphics/camera"
 	"github.com/Salamander5876/AnimoEngine/pkg/graphics/shader"
+	"github.com/Salamander5876/AnimoEngine/pkg/graphics/text"
 	"github.com/Salamander5876/AnimoEngine/pkg/graphics/ui"
 	"github.com/Salamander5876/AnimoEngine/pkg/platform/input"
 	"github.com/Salamander5876/AnimoEngine/pkg/platform/window"
@@ -46,6 +47,14 @@ type Debris struct {
 	rotation float32
 	lifetime float32
 	size     float32
+}
+
+// BloodDecal кровавое пятно на полу или стене
+type BloodDecal struct {
+	position mgl32.Vec3
+	normal   mgl32.Vec3 // Нормаль поверхности (вверх для пола, в сторону для стен)
+	size     float32
+	rotation float32 // Случайная ротация для разнообразия
 }
 
 // DoomGame игра в стиле Doom
@@ -108,6 +117,21 @@ type DoomGame struct {
 	debris              []Debris
 	boxVAO              uint32
 	boxVBO              uint32
+
+	// Система оружия
+	currentWeapon int // 0=кулаки, 1=пистолет
+	textRenderer  *text.TextRenderer
+
+	// Толкаемый шар
+	ballPosition mgl32.Vec3
+	ballVelocity mgl32.Vec3
+	ballVAO      uint32
+	ballVBO      uint32
+
+	// Кровавые пятна
+	bloodDecals    []BloodDecal
+	bloodDecalVAO  uint32
+	bloodDecalVBO  uint32
 }
 
 func main() {
@@ -124,6 +148,9 @@ func main() {
 		maxAmmo:         60,
 		clipSize:        12,
 		isReloading:     false,
+		currentWeapon:   1, // Начинаем с пистолета
+		ballPosition:    mgl32.Vec3{0, 0.5, -6}, // Шар в центре карты
+		ballVelocity:    mgl32.Vec3{0, 0, 0},
 		enemyPositions: []mgl32.Vec3{
 			{5, 0.5, -5},
 			{-5, 0.5, -5},
@@ -216,6 +243,8 @@ func (g *DoomGame) onInit(engine *core.Engine) error {
 	g.createEnemyCube()
 	g.createLineVAO()
 	g.createBox()
+	g.createBall()
+	g.createBloodDecalVAO()
 
 	// Создаем UI рендерер
 	g.uiRenderer, err = ui.NewUIRenderer()
@@ -224,6 +253,12 @@ func (g *DoomGame) onInit(engine *core.Engine) error {
 	}
 	width, height := engine.GetWindow().GetSize()
 	g.uiRenderer.SetProjection(float32(width), float32(height))
+
+	// Создаем текстовый рендерер
+	g.textRenderer, err = text.NewTextRenderer()
+	if err != nil {
+		return err
+	}
 
 	// Настройки OpenGL
 	gl.Enable(gl.DEPTH_TEST)
@@ -238,8 +273,10 @@ func (g *DoomGame) onInit(engine *core.Engine) error {
 	fmt.Println("WASD - Движение")
 	fmt.Println("Пробел - Прыжок")
 	fmt.Println("Мышь - Обзор")
-	fmt.Println("ЛКМ - Стрельба")
+	fmt.Println("ЛКМ - Стрельба/Удар")
 	fmt.Println("R - Перезарядка")
+	fmt.Println("F - Пинок")
+	fmt.Println("1 - Кулаки, 2 - Пистолет")
 	fmt.Println("ESC - Выход")
 	fmt.Printf("\nЗдоровье: %d/%d\n", g.playerHealth, g.maxHealth)
 	fmt.Printf("Патроны: %d/%d\n", g.currentAmmo, g.maxAmmo)
@@ -479,6 +516,108 @@ func (g *DoomGame) createBox() {
 	gl.BindVertexArray(0)
 }
 
+func (g *DoomGame) createBall() {
+	// Создаем шар (сфера аппроксимированная кубом с синим цветом)
+	vertices := []float32{
+		// Позиции         // Цвета (синий)
+		-0.5, -0.5, -0.5, 0.2, 0.4, 1.0,
+		0.5, -0.5, -0.5, 0.2, 0.4, 1.0,
+		0.5, 0.5, -0.5, 0.2, 0.4, 1.0,
+		0.5, 0.5, -0.5, 0.2, 0.4, 1.0,
+		-0.5, 0.5, -0.5, 0.2, 0.4, 1.0,
+		-0.5, -0.5, -0.5, 0.2, 0.4, 1.0,
+
+		-0.5, -0.5, 0.5, 0.3, 0.5, 1.0,
+		0.5, -0.5, 0.5, 0.3, 0.5, 1.0,
+		0.5, 0.5, 0.5, 0.3, 0.5, 1.0,
+		0.5, 0.5, 0.5, 0.3, 0.5, 1.0,
+		-0.5, 0.5, 0.5, 0.3, 0.5, 1.0,
+		-0.5, -0.5, 0.5, 0.3, 0.5, 1.0,
+
+		-0.5, 0.5, 0.5, 0.4, 0.6, 1.0,
+		-0.5, 0.5, -0.5, 0.4, 0.6, 1.0,
+		-0.5, -0.5, -0.5, 0.4, 0.6, 1.0,
+		-0.5, -0.5, -0.5, 0.4, 0.6, 1.0,
+		-0.5, -0.5, 0.5, 0.4, 0.6, 1.0,
+		-0.5, 0.5, 0.5, 0.4, 0.6, 1.0,
+
+		0.5, 0.5, 0.5, 0.4, 0.6, 1.0,
+		0.5, 0.5, -0.5, 0.4, 0.6, 1.0,
+		0.5, -0.5, -0.5, 0.4, 0.6, 1.0,
+		0.5, -0.5, -0.5, 0.4, 0.6, 1.0,
+		0.5, -0.5, 0.5, 0.4, 0.6, 1.0,
+		0.5, 0.5, 0.5, 0.4, 0.6, 1.0,
+
+		-0.5, -0.5, -0.5, 0.1, 0.3, 0.8,
+		0.5, -0.5, -0.5, 0.1, 0.3, 0.8,
+		0.5, -0.5, 0.5, 0.1, 0.3, 0.8,
+		0.5, -0.5, 0.5, 0.1, 0.3, 0.8,
+		-0.5, -0.5, 0.5, 0.1, 0.3, 0.8,
+		-0.5, -0.5, -0.5, 0.1, 0.3, 0.8,
+
+		-0.5, 0.5, -0.5, 0.5, 0.7, 1.0,
+		0.5, 0.5, -0.5, 0.5, 0.7, 1.0,
+		0.5, 0.5, 0.5, 0.5, 0.7, 1.0,
+		0.5, 0.5, 0.5, 0.5, 0.7, 1.0,
+		-0.5, 0.5, 0.5, 0.5, 0.7, 1.0,
+		-0.5, 0.5, -0.5, 0.5, 0.7, 1.0,
+	}
+
+	gl.GenVertexArrays(1, &g.ballVAO)
+	gl.GenBuffers(1, &g.ballVBO)
+
+	gl.BindVertexArray(g.ballVAO)
+	gl.BindBuffer(gl.ARRAY_BUFFER, g.ballVBO)
+	gl.BufferData(gl.ARRAY_BUFFER, len(vertices)*4, gl.Ptr(vertices), gl.STATIC_DRAW)
+
+	gl.VertexAttribPointer(0, 3, gl.FLOAT, false, 6*4, gl.PtrOffset(0))
+	gl.EnableVertexAttribArray(0)
+	gl.VertexAttribPointer(1, 3, gl.FLOAT, false, 6*4, gl.PtrOffset(3*4))
+	gl.EnableVertexAttribArray(1)
+
+	gl.BindVertexArray(0)
+}
+
+func (g *DoomGame) createBloodDecalVAO() {
+	// Создаем VAO и VBO для кровавых пятен (квадратная плоскость)
+	gl.GenVertexArrays(1, &g.bloodDecalVAO)
+	gl.GenBuffers(1, &g.bloodDecalVBO)
+
+	gl.BindVertexArray(g.bloodDecalVAO)
+	gl.BindBuffer(gl.ARRAY_BUFFER, g.bloodDecalVBO)
+
+	// Позиция (3 float) + Цвет (3 float)
+	gl.VertexAttribPointer(0, 3, gl.FLOAT, false, 6*4, gl.PtrOffset(0))
+	gl.EnableVertexAttribArray(0)
+	gl.VertexAttribPointer(1, 3, gl.FLOAT, false, 6*4, gl.PtrOffset(3*4))
+	gl.EnableVertexAttribArray(1)
+
+	gl.BindVertexArray(0)
+}
+
+// createBloodSplatter создает кровавые брызги на полу и стенах
+func (g *DoomGame) createBloodSplatter(position mgl32.Vec3, count int) {
+	for i := 0; i < count; i++ {
+		// Случайное пятно на полу
+		angle := float32(i) * (2.0 * math.Pi / float32(count))
+		offset := float32(0.3 + float64(i)*0.1)
+
+		bloodPos := mgl32.Vec3{
+			position.X() + float32(math.Cos(float64(angle)))*offset,
+			0.01, // Чуть выше пола
+			position.Z() + float32(math.Sin(float64(angle)))*offset,
+		}
+
+		decal := BloodDecal{
+			position: bloodPos,
+			normal:   mgl32.Vec3{0, 1, 0}, // Вверх для пола
+			size:     float32(0.2 + float64(i)*0.05),
+			rotation: float32(i) * 0.7,
+		}
+		g.bloodDecals = append(g.bloodDecals, decal)
+	}
+}
+
 func (g *DoomGame) onUpdate(engine *core.Engine, dt float32) {
 	if g.isDead {
 		return
@@ -558,8 +697,8 @@ func (g *DoomGame) onUpdate(engine *core.Engine, dt float32) {
 			playerMax.Z() > boxMin.Z() && playerMin.Z() < boxMax.Z() {
 
 			// Вычисляем направление выталкивания (по наименьшей проникающей оси)
-			overlapX := mgl32.Min(playerMax.X()-boxMin.X(), boxMax.X()-playerMin.X())
-			overlapZ := mgl32.Min(playerMax.Z()-boxMin.Z(), boxMax.Z()-playerMin.Z())
+			overlapX := float32(math.Min(float64(playerMax.X()-boxMin.X()), float64(boxMax.X()-playerMin.X())))
+			overlapZ := float32(math.Min(float64(playerMax.Z()-boxMin.Z()), float64(boxMax.Z()-playerMin.Z())))
 
 			if overlapX < overlapZ {
 				// Выталкиваем по X
@@ -613,6 +752,17 @@ func (g *DoomGame) onUpdate(engine *core.Engine, dt float32) {
 
 	g.camera.ProcessMouseMovement(float32(xOffset), float32(yOffset), true)
 
+	// === СМЕНА ОРУЖИЯ ===
+	// Попробуем обе проверки - JustPressed и Pressed
+	if inputMgr.IsKeyPressed(input.Key1) && g.currentWeapon != 0 {
+		g.currentWeapon = 0
+		fmt.Println("👊 Выбраны кулаки")
+	}
+	if inputMgr.IsKeyPressed(input.Key2) && g.currentWeapon != 1 {
+		g.currentWeapon = 1
+		fmt.Println("🔫 Выбран пистолет")
+	}
+
 	// === ПЕРЕЗАРЯДКА ===
 	if inputMgr.IsKeyPressed(input.KeyR) && !g.isReloading && g.currentAmmo < g.clipSize && g.maxAmmo > 0 {
 		g.isReloading = true
@@ -643,24 +793,37 @@ func (g *DoomGame) onUpdate(engine *core.Engine, dt float32) {
 		}
 	}
 
-	// === СТРЕЛЬБА ===
-	if inputMgr.IsMouseButtonPressed(input.MouseButtonLeft) && g.canShoot && !g.isReloading {
-		if g.currentAmmo > 0 {
-			g.shoot()
-			g.currentAmmo--
+	// === СТРЕЛЬБА / УДАР ===
+	if inputMgr.IsMouseButtonPressed(input.MouseButtonLeft) && g.canShoot {
+		if g.currentWeapon == 0 {
+			// Кулаки - ближний бой
+			g.meleeAttack()
 			g.canShoot = false
-			g.shootCooldown = 0.2 // Быстрее стрельба
+			g.shootCooldown = 0.5 // Медленнее удар
+		} else if g.currentWeapon == 1 && !g.isReloading {
+			// Пистолет - стрельба
+			if g.currentAmmo > 0 {
+				g.shoot()
+				g.currentAmmo--
+				g.canShoot = false
+				g.shootCooldown = 0.2 // Быстрее стрельба
 
-			// Автоматическая перезарядка если закончились патроны
-			if g.currentAmmo == 0 && g.maxAmmo > 0 {
-				fmt.Println("⚠️ Магазин пуст!")
+				// Автоматическая перезарядка если закончились патроны
+				if g.currentAmmo == 0 && g.maxAmmo > 0 {
+					fmt.Println("⚠️ Магазин пуст!")
+				}
+			} else {
+				// Щелчок пустого магазина
+				fmt.Println("*клик* - Нет патронов! Нажми R для перезарядки")
+				g.canShoot = false
+				g.shootCooldown = 0.3
 			}
-		} else {
-			// Щелчок пустого магазина
-			fmt.Println("*клик* - Нет патронов! Нажми R для перезарядки")
-			g.canShoot = false
-			g.shootCooldown = 0.3
 		}
+	}
+
+	// === ПИНОК ===
+	if inputMgr.IsKeyJustPressed(input.KeyF) {
+		g.kick()
 	}
 
 	// === AI ВРАГОВ ===
@@ -719,6 +882,46 @@ func (g *DoomGame) onUpdate(engine *core.Engine, dt float32) {
 			g.bulletTracers = append(g.bulletTracers[:i], g.bulletTracers[i+1:]...)
 		}
 	}
+
+	// === ФИЗИКА ШАРА ===
+	const ballFriction = 0.95
+	const ballRadius = 0.5
+
+	// Применяем трение
+	g.ballVelocity = g.ballVelocity.Mul(ballFriction)
+
+	// Обновляем позицию
+	g.ballPosition = g.ballPosition.Add(g.ballVelocity.Mul(dt))
+
+	// Коллизии шара со стенами арены
+	if g.ballPosition.X() > arenaSize-ballRadius {
+		g.ballPosition[0] = arenaSize - ballRadius
+		g.ballVelocity[0] = -g.ballVelocity[0] * 0.7 // Отскок с потерей энергии
+	}
+	if g.ballPosition.X() < -arenaSize+ballRadius {
+		g.ballPosition[0] = -arenaSize + ballRadius
+		g.ballVelocity[0] = -g.ballVelocity[0] * 0.7
+	}
+	if g.ballPosition.Z() > arenaSize-ballRadius {
+		g.ballPosition[2] = arenaSize - ballRadius
+		g.ballVelocity[2] = -g.ballVelocity[2] * 0.7
+	}
+	if g.ballPosition.Z() < -arenaSize+ballRadius {
+		g.ballPosition[2] = -arenaSize + ballRadius
+		g.ballVelocity[2] = -g.ballVelocity[2] * 0.7
+	}
+
+	// Коллизия шара с игроком
+	ballToPlayer := g.camera.Position.Sub(g.ballPosition)
+	ballToPlayer[1] = 0 // Игнорируем высоту
+	ballDist := ballToPlayer.Len()
+	if ballDist < playerRadius+ballRadius {
+		// Отталкиваем шар
+		if ballDist > 0.01 {
+			pushDir := ballToPlayer.Normalize()
+			g.ballPosition = g.ballPosition.Sub(pushDir.Mul(playerRadius + ballRadius - ballDist))
+		}
+	}
 }
 
 func (g *DoomGame) shoot() {
@@ -774,6 +977,7 @@ func (g *DoomGame) shoot() {
 				tracerEnd = g.camera.Position.Add(g.camera.Front.Mul(distance))
 
 				// Убили врага!
+				g.createBloodSplatter(enemyPos, 5) // Создаем кровь
 				g.enemyPositions = append(g.enemyPositions[:i], g.enemyPositions[i+1:]...)
 				g.enemiesKilled++
 
@@ -822,6 +1026,93 @@ func (g *DoomGame) createDebris(position mgl32.Vec3, count int) {
 	}
 }
 
+// meleeAttack атака кулаками (ближний бой)
+func (g *DoomGame) meleeAttack() {
+	const meleeRange = 2.0
+	const meleeDamage = 50 // Одного удара достаточно чтобы убить врага
+
+	// Проверяем врагов в зоне удара
+	for i := len(g.enemyPositions) - 1; i >= 0; i-- {
+		enemyPos := g.enemyPositions[i]
+		toEnemy := enemyPos.Sub(g.camera.Position)
+		toEnemy[1] = 0 // Игнорируем высоту
+
+		distance := toEnemy.Len()
+		if distance > meleeRange {
+			continue
+		}
+
+		// Проверяем что враг перед нами
+		if distance > 0.01 {
+			direction := toEnemy.Normalize()
+			dot := g.camera.Front.Dot(direction)
+			if dot > 0.7 { // Враг в зоне атаки (перед нами)
+				// Убиваем врага!
+				g.createBloodSplatter(enemyPos, 5) // Создаем кровь
+				g.enemyPositions = append(g.enemyPositions[:i], g.enemyPositions[i+1:]...)
+				g.enemiesKilled++
+
+				fmt.Printf("👊 Враг убит кулаками! Осталось: %d\n", len(g.enemyPositions))
+
+				if len(g.enemyPositions) == 0 {
+					fmt.Println("\n🎉 Победа! Все враги уничтожены!")
+					fmt.Printf("Нажмите ESC для выхода\n")
+				}
+				return // Только один враг за удар
+			}
+		}
+	}
+
+	fmt.Println("👊 Промах!")
+}
+
+// kick пинок - толкает объекты и шар
+func (g *DoomGame) kick() {
+	const kickRange = 3.0
+	const kickForce = 10.0
+
+	fmt.Println("🦶 Пинок!")
+
+	// Толкаем шар если он рядом
+	toBall := g.ballPosition.Sub(g.camera.Position)
+	toBall[1] = 0
+	ballDist := toBall.Len()
+
+	if ballDist < kickRange && ballDist > 0.01 {
+		// Проверяем что шар перед нами
+		direction := toBall.Normalize()
+		dot := g.camera.Front.Dot(direction)
+		if dot > 0.5 {
+			// Пинаем шар!
+			kickDir := g.camera.Front
+			kickDir[1] = 0
+			kickDir = kickDir.Normalize()
+			g.ballVelocity = g.ballVelocity.Add(kickDir.Mul(kickForce))
+			fmt.Println("⚽ Шар отпинан!")
+		}
+	}
+
+	// Толкаем ящики
+	for i := range g.destructibleObjects {
+		box := &g.destructibleObjects[i]
+		toBox := box.position.Sub(g.camera.Position)
+		toBox[1] = 0
+		boxDist := toBox.Len()
+
+		if boxDist < kickRange && boxDist > 0.01 {
+			direction := toBox.Normalize()
+			dot := g.camera.Front.Dot(direction)
+			if dot > 0.5 {
+				// "Пинаем" ящик - создаем осколки
+				fmt.Println("📦 Ящик разрушен пинком!")
+				g.createDebris(box.position, 8)
+				g.destructibleObjects = append(g.destructibleObjects[:i], g.destructibleObjects[i+1:]...)
+				return
+			}
+		}
+	}
+}
+
 func (g *DoomGame) onRender(engine *core.Engine) {
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
@@ -846,6 +1137,34 @@ func (g *DoomGame) onRender(engine *core.Engine) {
 	g.shader.SetMat4("uModel", model)
 	gl.BindVertexArray(g.floorVAO)
 	gl.DrawArrays(gl.TRIANGLES, 0, 6)
+
+	// Рисуем кровавые пятна на полу
+	gl.BindVertexArray(g.bloodDecalVAO)
+	for _, decal := range g.bloodDecals {
+		// Создаем квадрат для декаля
+		s := decal.size / 2
+		bloodColor := mgl32.Vec3{0.4, 0.0, 0.0} // Темно-красный
+
+		vertices := []float32{
+			-s, decal.position.Y(), -s, bloodColor.X(), bloodColor.Y(), bloodColor.Z(),
+			s, decal.position.Y(), -s, bloodColor.X(), bloodColor.Y(), bloodColor.Z(),
+			s, decal.position.Y(), s, bloodColor.X(), bloodColor.Y(), bloodColor.Z(),
+
+			-s, decal.position.Y(), -s, bloodColor.X(), bloodColor.Y(), bloodColor.Z(),
+			s, decal.position.Y(), s, bloodColor.X(), bloodColor.Y(), bloodColor.Z(),
+			-s, decal.position.Y(), s, bloodColor.X(), bloodColor.Y(), bloodColor.Z(),
+		}
+
+		gl.BindBuffer(gl.ARRAY_BUFFER, g.bloodDecalVBO)
+		gl.BufferData(gl.ARRAY_BUFFER, len(vertices)*4, gl.Ptr(vertices), gl.DYNAMIC_DRAW)
+
+		// Матрица трансформации
+		model = mgl32.Translate3D(decal.position.X(), 0, decal.position.Z())
+		model = model.Mul4(mgl32.HomogRotate3D(decal.rotation, mgl32.Vec3{0, 1, 0}))
+		g.shader.SetMat4("uModel", model)
+
+		gl.DrawArrays(gl.TRIANGLES, 0, 6)
+	}
 
 	// Рисуем стены (периметр арены)
 	wallPositions := []mgl32.Vec3{
@@ -874,6 +1193,37 @@ func (g *DoomGame) onRender(engine *core.Engine) {
 		g.shader.SetMat4("uModel", model)
 		gl.DrawArrays(gl.TRIANGLES, 0, 36)
 	}
+
+	// Рисуем разрушаемые ящики
+	gl.BindVertexArray(g.boxVAO)
+	for _, box := range g.destructibleObjects {
+		// Эффект повреждения - ящик качается когда поврежден
+		shake := float32(0)
+		if box.health < box.maxHP {
+			shake = float32(math.Sin(float64(currentTime*20))) * 0.05 * float32(box.maxHP-box.health)
+		}
+
+		model = mgl32.Translate3D(box.position.X()+shake, box.position.Y(), box.position.Z())
+		model = model.Mul4(mgl32.Scale3D(box.size.X(), box.size.Y(), box.size.Z()))
+		g.shader.SetMat4("uModel", model)
+		gl.DrawArrays(gl.TRIANGLES, 0, 36)
+	}
+
+	// Рисуем осколки
+	for _, d := range g.debris {
+		// Осколки вращаются и летят
+		model = mgl32.Translate3D(d.position.X(), d.position.Y(), d.position.Z())
+		model = model.Mul4(mgl32.HomogRotate3D(d.rotation, mgl32.Vec3{1, 1, 0}.Normalize()))
+		model = model.Mul4(mgl32.Scale3D(d.size, d.size, d.size))
+		g.shader.SetMat4("uModel", model)
+		gl.DrawArrays(gl.TRIANGLES, 0, 36)
+	}
+
+	// Рисуем шар
+	gl.BindVertexArray(g.ballVAO)
+	model = mgl32.Translate3D(g.ballPosition.X(), g.ballPosition.Y(), g.ballPosition.Z())
+	g.shader.SetMat4("uModel", model)
+	gl.DrawArrays(gl.TRIANGLES, 0, 36)
 
 	// === РИСУЕМ ТРАССЕРЫ ПУЛЬ (3D линии) ===
 	if len(g.bulletTracers) > 0 {
@@ -983,32 +1333,77 @@ func (g *DoomGame) onRender(engine *core.Engine) {
 		g.uiRenderer.DrawRect(reloadX, reloadY, 200, 40, mgl32.Vec4{1, 1, 0, reloadAlpha})
 	}
 
-	// === РИСУЕМ ПИСТОЛЕТ (2D спрайт в правом нижнем углу) ===
-	gunX := widthF - 250
-	gunY := heightF - 200
+	// === РИСУЕМ ОРУЖИЕ (2D спрайт в правом нижнем углу) ===
+	weaponX := widthF - 250
+	weaponY := heightF - 200
 
-	// Отдача - двигаем пистолет вверх
+	// Отдача - двигаем оружие вверх
 	if g.gunRecoil > 0 {
-		gunY -= g.gunRecoil * 100
+		weaponY -= g.gunRecoil * 100
 	}
 
-	// Ствол пистолета
-	barrelColor := mgl32.Vec4{0.2, 0.2, 0.2, 1.0}
-	g.uiRenderer.DrawRect(gunX+40, gunY+20, 100, 30, barrelColor)
+	if g.currentWeapon == 0 {
+		// РИСУЕМ КУЛАК (как в Minecraft)
+		// Рука (предплечье) - цвет кожи
+		skinColor := mgl32.Vec4{0.9, 0.7, 0.6, 1.0}
+		g.uiRenderer.DrawRect(weaponX+80, weaponY+80, 50, 100, skinColor)
 
-	// Прицельная планка
-	g.uiRenderer.DrawRect(gunX+130, gunY+15, 8, 10, mgl32.Vec4{0.8, 0.8, 0.8, 1.0})
+		// Кулак (блочный стиль Minecraft)
+		// Основная часть кулака
+		fistX := weaponX + 60
+		fistY := weaponY + 20
+		g.uiRenderer.DrawRect(fistX, fistY, 70, 70, skinColor)
 
-	// Рукоятка
-	gripColor := mgl32.Vec4{0.15, 0.1, 0.05, 1.0}
-	g.uiRenderer.DrawRect(gunX+50, gunY+50, 40, 80, gripColor)
+		// Тени на кулаке (для объёма)
+		shadowColor := mgl32.Vec4{0.7, 0.5, 0.4, 1.0}
+		g.uiRenderer.DrawRect(fistX+60, fistY, 10, 70, shadowColor)      // правая сторона
+		g.uiRenderer.DrawRect(fistX, fistY, 70, 10, shadowColor)         // верх
 
-	// Затвор
-	slideColor := mgl32.Vec4{0.3, 0.3, 0.3, 1.0}
-	g.uiRenderer.DrawRect(gunX+45, gunY+10, 90, 25, slideColor)
+		// Большой палец
+		thumbColor := mgl32.Vec4{0.85, 0.65, 0.55, 1.0}
+		g.uiRenderer.DrawRect(fistX-15, fistY+20, 20, 35, thumbColor)
+		g.uiRenderer.DrawRect(fistX-20, fistY+20, 5, 35, shadowColor) // тень большого пальца
 
-	// Спусковой крючок
-	g.uiRenderer.DrawRect(gunX+60, gunY+60, 15, 25, mgl32.Vec4{0.1, 0.1, 0.1, 1.0})
+		// Детали костяшек (темные линии)
+		knuckleColor := mgl32.Vec4{0.6, 0.4, 0.3, 1.0}
+		g.uiRenderer.DrawRect(fistX+10, fistY+5, 15, 3, knuckleColor)
+		g.uiRenderer.DrawRect(fistX+30, fistY+5, 15, 3, knuckleColor)
+		g.uiRenderer.DrawRect(fistX+50, fistY+5, 15, 3, knuckleColor)
+	} else {
+		// РИСУЕМ ПИСТОЛЕТ
+		gunX := weaponX
+		gunY := weaponY
+
+		// Ствол пистолета
+		barrelColor := mgl32.Vec4{0.2, 0.2, 0.2, 1.0}
+		g.uiRenderer.DrawRect(gunX+40, gunY+20, 100, 30, barrelColor)
+
+		// Прицельная планка
+		g.uiRenderer.DrawRect(gunX+130, gunY+15, 8, 10, mgl32.Vec4{0.8, 0.8, 0.8, 1.0})
+
+		// Рукоятка
+		gripColor := mgl32.Vec4{0.15, 0.1, 0.05, 1.0}
+		g.uiRenderer.DrawRect(gunX+50, gunY+50, 40, 80, gripColor)
+
+		// Затвор
+		slideColor := mgl32.Vec4{0.3, 0.3, 0.3, 1.0}
+		g.uiRenderer.DrawRect(gunX+45, gunY+10, 90, 25, slideColor)
+
+		// Спусковой крючок
+		g.uiRenderer.DrawRect(gunX+60, gunY+60, 15, 25, mgl32.Vec4{0.1, 0.1, 0.1, 1.0})
+	}
+
+	// Название оружия (текст)
+	weaponName := ""
+	if g.currentWeapon == 0 {
+		weaponName = "FISTS"
+	} else {
+		weaponName = "PISTOL"
+	}
+
+	orthoProjection := mgl32.Ortho(0, widthF, 0, heightF, -1, 1)
+	weaponColor := mgl32.Vec4{1, 1, 1, 1}
+	g.textRenderer.DrawText(weaponName, widthF-150, 30, 1.5, weaponColor, orthoProjection)
 
 	gl.Enable(gl.DEPTH_TEST)
 }
@@ -1031,4 +1426,6 @@ func (g *DoomGame) onShutdown(engine *core.Engine) {
 	gl.DeleteBuffers(1, &g.enemyVBO)
 	gl.DeleteVertexArrays(1, &g.lineVAO)
 	gl.DeleteBuffers(1, &g.lineVBO)
+	gl.DeleteVertexArrays(1, &g.boxVAO)
+	gl.DeleteBuffers(1, &g.boxVBO)
 }
